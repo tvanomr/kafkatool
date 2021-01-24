@@ -14,5 +14,6 @@ func main() {
 	topicCmd := &cobra.Command{Use: "topic", Aliases: []string{"t"}}
 	rootCmd.AddCommand(topicCmd)
 	topicCmd.AddCommand(topicListCmd)
+	topicCmd.AddCommand(topicModCmd)
 	rootCmd.Execute()
 }

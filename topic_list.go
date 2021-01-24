@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/Shopify/sarama"
 	"github.com/spf13/cobra"
+	"github.com/tvanomr/kafkatool/kafkaadmin"
 	"strings"
 )
 
@@ -12,26 +13,7 @@ type topicListCmdType struct {
 	shouldPrintDefault      bool
 	shouldShowCompactedOnly bool
 	shouldShowInfiniteOnly  bool
-}
-
-func (t *topicListCmdType) getTopicConfigs(topics ...string) (map[string][]*sarama.ConfigEntry, error) {
-	request := sarama.DescribeConfigsRequest{Version: 2}
-	for _, topic := range topics {
-		request.Resources = append(request.Resources, &sarama.ConfigResource{Type: sarama.TopicResource, Name: topic})
-	}
-	broker, err := t.client.Controller()
-	if err != nil {
-		return nil, err
-	}
-	response, err := broker.DescribeConfigs(&request)
-	result := make(map[string][]*sarama.ConfigEntry)
-	for _, resource := range response.Resources {
-		if resource.ErrorCode != int16(sarama.ErrNoError) {
-			return nil, sarama.KError(resource.ErrorCode)
-		}
-		result[resource.Name] = resource.Configs
-	}
-	return result, nil
+	verbose                 bool
 }
 
 func inArray(target string, array []string) bool {
@@ -53,44 +35,19 @@ func filterTopics(topics []string, predicate func(string) bool) []string {
 	return result
 }
 
-func isCompacted(configs []*sarama.ConfigEntry) bool {
-	for _, config := range configs {
-		if config.Name == "cleanup.policy" && strings.Contains(config.Value, "compact") {
-			return true
-		}
-	}
-	return false
+func isCompacted(configs kafkaadmin.RawConfig) bool {
+	return strings.Contains(configs["cleanup.policy"].Value, "compact")
 }
 
-func isInfinite(configs []*sarama.ConfigEntry) bool {
-	var isDelete, isInfiniteTime, isInfiniteSize bool
-	for _, config := range configs {
-		switch config.Name {
-		case "cleanup.policy":
-			if config.Value != "delete" {
-				return false
-			}
-			isDelete = true
-		case "retention.ms":
-			if config.Value != "-1" {
-				return false
-			}
-			isInfiniteTime = true
-		case "retention.bytes":
-			if config.Value != "-1" {
-				return false
-			}
-			isInfiniteSize = true
-		}
-	}
-	return isDelete && isInfiniteTime && isInfiniteSize
+func isInfinite(configs kafkaadmin.RawConfig) bool {
+	return configs["cleanup.policy"].Value == "delete" &&
+		configs["retention.ms"].Value == "-1" &&
+		configs["retention.bytes"].Value == "-1"
 }
 
 func (t *topicListCmdType) runListTopics(cmd *cobra.Command, args []string) error {
 	var err error
-	conf := sarama.NewConfig()
-	conf.Version = sarama.V2_4_0_0
-	t.client, err = sarama.NewClient([]string{hostPort.String()}, conf)
+	t.client, err = kafkaadmin.NewDefaultClient([]string{hostPort.String()})
 	if err != nil {
 		return err
 	}
@@ -108,7 +65,7 @@ func (t *topicListCmdType) runListTopics(cmd *cobra.Command, args []string) erro
 			return inArray(topic, args)
 		})
 	}
-	configs, err := t.getTopicConfigs(topics...)
+	configs, err := kafkaadmin.GetTopicConfigs(t.client, topics...)
 	if err != nil {
 		return err
 	}
@@ -136,11 +93,18 @@ func (t *topicListCmdType) runListTopics(cmd *cobra.Command, args []string) erro
 				fmt.Printf("\t\t%d ", partition)
 				for _, writable := range writables {
 					if partition == writable {
-						fmt.Printf("(writable)")
+						fmt.Printf("(writable) ")
 						break
 					}
 				}
+				min, max, err := kafkaadmin.GetTopicRange(t.client, topic, partition)
+				if err == nil {
+					fmt.Printf("range %d-%d", min, max)
+				}
 				fmt.Println("")
+			}
+			if !t.verbose {
+				continue
 			}
 			fmt.Println("\t Configs")
 			for _, config := range configs[topic] {
@@ -176,4 +140,5 @@ func init() {
 	flags.BoolVarP(&runner.shouldPrintDefault, "default", "d", false, "print unchanged (default) config parameters")
 	flags.BoolVarP(&runner.shouldShowCompactedOnly, "compact", "c", false, "show compacted topics only")
 	flags.BoolVarP(&runner.shouldShowInfiniteOnly, "infinite", "i", false, "show infinite topics only")
+	flags.BoolVarP(&runner.verbose, "verbose", "v", false, "print more info (configs)")
 }
