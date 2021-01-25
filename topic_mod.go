@@ -14,6 +14,7 @@ const (
 	retentionMsName    = "retention.ms"
 	retentionBytesName = "retention.bytes"
 	segmentBytesName   = "segment.bytes"
+	segmentMsName      = "segment.ms"
 )
 
 var topicConfigPresets = map[string]map[string]string{
@@ -33,7 +34,9 @@ type topicModCmdType struct {
 	configKey         string
 	configValue       string
 	segmentSize       string
+	segmentDuration   string
 	retentionSize     string
+	retentionDuration string
 }
 
 func (t *topicModCmdType) makeConfig() map[string]string {
@@ -50,6 +53,14 @@ func (t *topicModCmdType) makeConfig() map[string]string {
 			result[segmentBytesName] = strconv.FormatInt(value, 10)
 		}
 	}
+	if len(t.segmentDuration) > 0 {
+		value, err := parseDuration(t.segmentDuration)
+		if err == nil {
+			result[segmentMsName] = strconv.FormatInt(value.Milliseconds(), 10)
+		} else {
+			fmt.Println("segment duration conversion error:", err)
+		}
+	}
 	if len(t.retentionSize) > 0 {
 		value, err := parseBinarySize(t.retentionSize)
 		if err == nil {
@@ -57,6 +68,14 @@ func (t *topicModCmdType) makeConfig() map[string]string {
 				value = -1
 			}
 			result[retentionBytesName] = strconv.FormatInt(value, 10)
+		}
+	}
+	if len(t.retentionDuration) > 0 {
+		value, err := parseDuration(t.retentionDuration)
+		if err == nil {
+			result[retentionMsName] = strconv.FormatInt(value.Milliseconds(), 10)
+		} else {
+			fmt.Println("retention duration conversion error:", err)
 		}
 	}
 	return result
@@ -130,6 +149,8 @@ func init() {
 	flags.StringVarP(&runner.configName, "config", "c", "", "configuration profile name (compact and infinite hardcoded)")
 	flags.StringVarP(&runner.configKey, "key", "k", "", "topic config key to modify")
 	flags.StringVarP(&runner.configValue, "value", "v", "", "topic config value to modify")
-	flags.StringVar(&runner.segmentSize, "segment-size", "", "segment size in bytes, suffixes K,M,G,T supported")
+	flags.StringVar(&runner.segmentSize, "segment-size", "", "maximum segment size in bytes, suffixes K,M,G,T supported")
+	flags.StringVar(&runner.segmentDuration, "segment-duration", "", "maximum segment duration in format like 1w3d2h4m5s3ms (one week, 3 days,2 hours, 4 minutes, 5 seconds and 3 milliseconds, fractional numbers are not supported)")
 	flags.StringVar(&runner.retentionSize, "retention-size", "", "retention size in bytes, suffixes K,M,G,T supported")
+	flags.StringVar(&runner.retentionDuration, "retention-duration", "", "maximum retention duration, see segment-duration for format")
 }
