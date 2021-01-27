@@ -15,5 +15,6 @@ func main() {
 	rootCmd.AddCommand(topicCmd)
 	topicCmd.AddCommand(topicListCmd)
 	topicCmd.AddCommand(topicModCmd)
+	rootCmd.AddCommand(readCmd)
 	rootCmd.Execute()
 }
